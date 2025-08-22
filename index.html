@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tap Timing Dual Mode</title>
+<style>
+:root { color-scheme: dark; }
+body { font-family: Arial, sans-serif; margin: 1em; background:#0f1115; color:#e6e6e6; }
+label, select, button, input { font-size: 14px; }
+#videoPlayer { width: 100%; max-height: 240px; background: #000; margin-bottom: 1em; border-radius: 8px; }
+#timer { font-size: 2em; margin: 0.25em 0 0.75em; font-variant-numeric: tabular-nums; }
+#tapButton { width: 100%; height: 72px; font-size: 1.4em; margin-bottom: 1em; border: 1px solid #30333a; background:#181b22; color:#e6e6e6; border-radius:10px; }
+#tapButton:disabled { opacity: 0.5; }
+table { width: 100%; border-collapse: collapse; margin-top: 0.5em; }
+th, td { border: 1px solid #2a2d34; padding: 0.5em; }
+thead th { background:#141821; }
+td.chord { cursor: text; }
+.cell { padding: 0.25em; min-height: 1.6em; }
+.chordCell[contenteditable="true"]:focus { outline: 2px solid #3b82f6; }
+.selected { background: #1e2634 !important; box-shadow: inset 0 0 0 2px #3b82f6; }
+#exportBtn { margin-top: 1em; padding: 0.6em 1em; font-size: 1em; border: 1px solid #30333a; background:#181b22; color:#e6e6e6; border-radius:10px; }
+#fileInput { margin-bottom: 1em; width: 100%; }
+#manualControls { margin: 0.5em 0 1em; }
+#modeSelect { margin: 0 0 0.75em; }
+.muted { color:#a9b0bd; font-size:12px; }
+.rowIdx { width: 3.5em; text-align: right; color:#a9b0bd; }
+.timeCell { font-variant-numeric: tabular-nums; width: 9em; }
+#duplicateBtn { margin-top:0.5em; padding:0.5em 1em; border:1px solid #30333a; background:#181b22; color:#e6e6e6; border-radius:8px; font-size:1em; }
+</style>
+</head>
+<body>
+
+<label for="modeSelect">Mode:</label>
+<select id="modeSelect">
+  <option value="manual">Manual Tap Mode (No file)</option>
+  <option value="file">File Mode (Load local MP4/audio)</option>
+</select>
+<span class="muted">Tip: Space = tap (desktop). First tap in File Mode starts video at 0.000.</span>
+
+<div id="fileModeControls" style="display:none;">
+  <label for="fileInput">Load local MP4 or audio file:</label>
+  <input id="fileInput" type="file" accept="video/*,audio/*" />
+  <video id="videoPlayer" controls></video>
+</div>
+
+<div id="manualControls" style="display:none;">
+  <button id="startStopBtn">Start</button>
+  <button id="resetBtn">Reset</button>
+</div>
+
+<div id="timer">00:00.000</div>
+<button id="tapButton" disabled>Tap Chord</button>
+
+<table id="logTable">
+  <thead>
+    <tr><th class="rowIdx">#</th><th class="timeCell">Timestamp</th><th>Chord</th></tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<button id="duplicateBtn" disabled>Duplicate Selected Progression</button>
+<button id="exportBtn" disabled>Export CSV</button>
+
+<script>
+// Elements
+const modeSelect = document.getElementById('modeSelect');
+const fileModeControls = document.getElementById('fileModeControls');
+const manualControls = document.getElementById('manualControls');
+const fileInput = document.getElementById('fileInput');
+const videoPlayer = document.getElementById('videoPlayer');
+const timerEl = document.getElementById('timer');
+const startStopBtn = document.getElementById('startStopBtn');
+const resetBtn = document.getElementById('resetBtn');
+const tapButton = document.getElementById('tapButton');
+const exportBtn = document.getElementById('exportBtn');
+const duplicateBtn = document.getElementById('duplicateBtn');
+const logTableBody = document.querySelector('#logTable tbody');
+
+// State
+let taps = []; // {timeSec:number, chord:string}
+let running = false;
+let startTime = 0;
+let elapsed = 0;
+let timerInterval;
+let mode = modeSelect.value;
+let firstTapDone = false;
+
+// Selection for duplication
+let sourceStart = null;
+let sourceEnd = null;
+let selectedRows = new Set();
+
+// Timer formatting
+function formatTime(seconds){
+  const ms=Math.floor((seconds-Math.floor(seconds))*1000);
+  const total=Math.floor(seconds);
+  const minutes=Math.floor(total/60);
+  const secs=total%60;
+  return String(minutes).padStart(2,'0')+':'+String(secs).padStart(2,'0')+'.'+String(ms).padStart(3,'0');
+}
+
+// Render table
+function renderTable(){
+  logTableBody.innerHTML='';
+  taps.forEach((tap,index)=>{
+    const tr=document.createElement('tr');
+    const tdIndex=document.createElement('td');
+    tdIndex.className='rowIdx';
+    tdIndex.textContent=index+1;
+    tr.appendChild(tdIndex);
+
+    const tdTime=document.createElement('td');
+    tdTime.className='timeCell';
+    tdTime.textContent=formatTime(tap.timeSec);
+    tr.appendChild(tdTime);
+
+    const tdChord=document.createElement('td');
+    tdChord.className='chord';
+    const cell=document.createElement('div');
+    cell.className='cell chordCell';
+    cell.contentEditable='true';
+    cell.spellcheck=false;
+    cell.dataset.row=index;
+    cell.textContent=tap.chord;
+    if(selectedRows.has(index)) cell.classList.add('selected');
+    tdChord.appendChild(cell);
+    tr.appendChild(tdChord);
+    logTableBody.appendChild(tr);
+  });
+  duplicateBtn.disabled=(sourceStart===null||sourceEnd===null);
+}
+
+// Add tap
+function addTap(){
+  let currentTime=0;
+  if(mode==='file' && videoPlayer.src){
+    if(videoPlayer.paused) return;
+    currentTime=videoPlayer.currentTime;
+  } else if(mode==='manual'){
+    if(!running) return;
+    currentTime=elapsed;
+  }
+  const chordDefault='Chord '+(taps.length+1);
+  taps.push({timeSec:currentTime,chord:chordDefault});
+  renderTable();
+  exportBtn.disabled=false;
+}
+
+// Timer
+function updateTimer(){
+  if(mode==='file' && videoPlayer.src) timerEl.textContent=formatTime(videoPlayer.currentTime);
+  else if(mode==='manual' && running){ elapsed=(Date.now()-startTime)/1000; timerEl.textContent=formatTime(elapsed); }
+}
+function startTimer(){ if(running)return; startTime=Date.now()-(elapsed*1000); timerInterval=setInterval(updateTimer,50); running=true; startStopBtn.textContent='Pause'; tapButton.disabled=false; }
+function stopTimer(){ if(!running)return; clearInterval(timerInterval); running=false; startStopBtn.textContent='Start'; tapButton.disabled=true; }
+function resetTimer(){ stopTimer(); elapsed=0; timerEl.textContent='00:00.000'; taps=[]; firstTapDone=false; sourceStart=null; sourceEnd=null; selectedRows.clear(); renderTable(); exportBtn.disabled=true; duplicateBtn.disabled=true; }
+
+// Event listeners
+startStopBtn.addEventListener('click',()=>{ running?stopTimer():startTimer(); });
+resetBtn.addEventListener('click',resetTimer);
+tapButton.addEventListener('click',addTap);
+exportBtn.addEventListener('click',()=>{
+  let csv='Time (HH:MM:SS.ms),Chord\n';
+  taps.forEach(tap=>csv+=`${formatTime(tap.timeSec)},${tap.chord}\n`);
+  const blob=new Blob([csv],{type:'text/csv'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download='chord_timestamps.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+});
+
+// Mode switch
+modeSelect.addEventListener('change',()=>{
+  mode=modeSelect.value;
+  if(mode==='file'){ fileModeControls.style.display='block'; manualControls.style.display='none'; tapButton.disabled=videoPlayer.paused||!videoPlayer.src; resetTimer();}
+  else{ fileModeControls.style.display='none'; manualControls.style.display='block'; tapButton.disabled=true; resetTimer();}
+});
+
+// File input
+fileInput.addEventListener('change',e=>{
+  const file=e.target.files[0]; if(!file)return;
+  const fileURL=URL.createObjectURL(file); videoPlayer.src=fileURL; taps=[]; renderTable(); exportBtn.disabled=true; tapButton.disabled=true; timerEl.textContent='00:00.000'; firstTapDone=false;
+});
+
+// Video play/pause
+videoPlayer.addEventListener('play',()=>{ tapButton.disabled=false; });
+videoPlayer.addEventListener('pause',()=>{ tapButton.disabled=true; });
+
+// Spacebar support and first-tap start for File Mode
+window.addEventListener('keydown',e=>{
+  if(e.code==='Space' && !e.repeat){
+    e.preventDefault();
+    if(!tapButton.disabled){
+      if(mode==='file' && !firstTapDone){ videoPlayer.currentTime=0; videoPlayer.play(); firstTapDone=true; }
+      addTap();
+    }
+  }
+});
+
+// Select chord cells for duplication
+logTableBody.addEventListener('click',e=>{
+  const row= e.target.closest('div.chordCell');
+  if(!row) return;
+  const idx=parseInt(row.dataset.row);
+  if(sourceStart===null){ sourceStart=idx; selectedRows.add(idx); }
+  else if(sourceEnd===null){ sourceEnd=idx; for(let i=sourceStart;i<=sourceEnd;i++) selectedRows.add(i); }
+  else{ // tap target
+    const sourceChord=taps.slice(sourceStart,sourceEnd+1).map(t=>t.chord);
+    let targetIdx=idx;
+    for(let i=0;i<sourceChord.length;i++){
+      if(targetIdx+i>=taps.length) taps.push({timeSec:0,chord:sourceChord[i]});
+      else taps[targetIdx+i].chord=sourceChord[i];
+    }
+    sourceStart=null; sourceEnd=null; selectedRows.clear(); renderTable();
+  }
+  renderTable();
+});
+
+// Duplicate button fallback (optional)
+duplicateBtn.addEventListener('click',()=>{
+  if(sourceStart===null||sourceEnd===null) return;
+  const sourceChord=taps.slice(sourceStart,sourceEnd+1).map(t=>t.chord);
+  let targetIdx=sourceEnd+1;
+  for(let i=0;i<sourceChord.length;i++){
+    if(targetIdx+i>=taps.length) taps.push({timeSec:0,chord:sourceChord[i]});
+    else taps[targetIdx+i].chord=sourceChord[i];
+  }
+  sourceStart=null; sourceEnd=null; selectedRows.clear(); renderTable();
+});
+
+// Initialize
+modeSelect.dispatchEvent(new Event('change'));
+</script>
+
+</body>
+</html>
