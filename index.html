@@ -33,15 +33,15 @@ td.chord { cursor: text; }
 
 <label for="modeSelect">Mode:</label>
 <select id="modeSelect">
-  <option value="manual">Manual Tap Mode (No file)</option>
-  <option value="file">File Mode (Load local MP4/audio)</option>
+  <option value="file" selected>File Mode (Load local MP4/audio)</option>
+  <option value="manual">Manual Tap Mode (No file)</option>
 </select>
 <span class="muted">Tip: Space = tap (desktop). First tap in File Mode starts video at 0.000.</span>
 
 <div id="fileModeControls" style="display:none;">
   <label for="fileInput">Load local MP4 or audio file:</label>
   <input id="fileInput" type="file" accept="video/*,audio/*" />
-  <video id="videoPlayer" controls></video>
+    <video id="videoPlayer" controls playsinline webkit-playsinline></video>
 </div>
 
 <div id="manualControls" style="display:none;">
@@ -135,21 +135,20 @@ function renderTable(){
 function addTap(){
   let currentTime=0;
   if(mode === 'file' && videoPlayer.src) {
-    // --- ZMENA: Logika pre prvý tap je teraz tu ---
     if (!firstTapDone) {
         videoPlayer.currentTime = 0;
         videoPlayer.play();
         firstTapDone = true;
-        currentTime = 0; // Prvý tap je vždy na 0.000
+        currentTime = 0;
     } else {
-        if(videoPlayer.paused) return; // Nedovoľ tap, ak je video pozastavené
+        if(videoPlayer.paused) return;
         currentTime = videoPlayer.currentTime;
     }
   } else if(mode === 'manual'){
     if(!running) return;
     currentTime=elapsed;
   } else {
-    return; // Nerob nič, ak nie sú splnené podmienky
+    return;
   }
   const chordDefault='Chord '+(taps.length+1);
   taps.push({timeSec:currentTime,chord:chordDefault});
@@ -182,7 +181,7 @@ exportBtn.addEventListener('click',()=>{
 // Mode switch
 modeSelect.addEventListener('change',()=>{
   mode=modeSelect.value;
-  if(mode==='file'){ fileModeControls.style.display='block'; manualControls.style.display='none'; tapButton.disabled=true; resetTimer();} // Tap button je disabled, kým sa nenačíta súbor
+  if(mode==='file'){ fileModeControls.style.display='block'; manualControls.style.display='none'; tapButton.disabled=true; resetTimer();}
   else{ fileModeControls.style.display='none'; manualControls.style.display='block'; tapButton.disabled=true; resetTimer();}
 });
 
@@ -196,13 +195,12 @@ fileInput.addEventListener('change',e=>{
   exportBtn.disabled=true;
   timerEl.textContent='00:00.000';
   firstTapDone=false;
-  // --- ZMENA: Povoľ tap tlačidlo hneď po načítaní súboru ---
   tapButton.disabled=false;
 });
 
 // Video play/pause
 videoPlayer.addEventListener('play',()=>{
-    if(!firstTapDone) firstTapDone = true; // Ak sa video spustí manuálne, berieme to ako prvý tap
+    if(!firstTapDone) firstTapDone = true;
     tapButton.disabled=false;
 });
 videoPlayer.addEventListener('pause',()=>{ tapButton.disabled=true; });
@@ -212,7 +210,6 @@ window.addEventListener('keydown',e=>{
   if(e.code==='Space' && !e.repeat){
     e.preventDefault();
     if(!tapButton.disabled){
-        // --- ZMENA: Jednoducho zavolá addTap, kde je všetka logika ---
         addTap();
     }
   }
@@ -251,7 +248,7 @@ duplicateBtn.addEventListener('click',()=>{
 
 // Initialize
 modeSelect.dispatchEvent(new Event('change'));
-setInterval(updateTimer, 50); // ZMENA: Časovač beží stále pre plynulé zobrazenie času videa
+setInterval(updateTimer, 50);
 </script>
 
 </body>
