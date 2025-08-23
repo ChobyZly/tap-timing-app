@@ -10,8 +10,6 @@ body { font-family: Arial, sans-serif; margin: 1em; background:#0f1115; color:#e
 label, select, button, input { font-size: 14px; }
 #videoPlayer { width: 100%; max-height: 240px; background: #000; margin-bottom: 1em; border-radius: 8px; }
 #timer { font-size: 2em; margin: 0.25em 0 0.75em; font-variant-numeric: tabular-nums; }
-#tapButton { width: 100%; height: 72px; font-size: 1.4em; margin-bottom: 1em; border: 1px solid #30333a; background:#181b22; color:#e6e6e6; border-radius:10px; }
-#tapButton:disabled { opacity: 0.5; }
 table { width: 100%; border-collapse: collapse; margin-top: 0.5em; }
 th, td { border: 1px solid #2a2d34; padding: 0.5em; }
 thead th { background:#141821; }
@@ -27,21 +25,50 @@ td.chord { cursor: text; }
 .rowIdx { width: 3.5em; text-align: right; color:#a9b0bd; }
 .timeCell { font-variant-numeric: tabular-nums; width: 9em; }
 #duplicateBtn { margin-top:0.5em; padding:0.5em 1em; border:1px solid #30333a; background:#181b22; color:#e6e6e6; border-radius:8px; font-size:1em; }
+
+/* --- ŠTÝLY PRE VÝBER TÓNINY A AKORDY --- */
+.controls-container { border: 1px solid #2a2d34; border-radius: 8px; padding: 0.75em; margin-bottom: 1em; }
+#selectKeyBtn { width: 100%; padding: 0.8em; font-size: 1.1em; margin-bottom: 0.75em; border: 1px solid #30333a; background:#181b22; color:#e6e6e6; border-radius:8px; cursor: pointer; }
+
+.modal-overlay { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); justify-content: center; align-items: center; }
+.modal-content { background-color: #181b22; padding: 1.5em; border: 1px solid #30333a; border-radius: 10px; width: 90%; max-width: 400px; text-align: center; }
+.modal-content h3 { margin-top: 0; }
+.selected-key-preview { font-size: 1.2em; margin-bottom: 1em; padding: 0.5em; background: #0f1115; border-radius: 6px; }
+.quality-selector { display: flex; gap: 0.75em; margin-bottom: 1em; }
+.quality-selector button { flex: 1; padding: 0.8em; font-size: 1em; border: 1px solid #30333a; background: #2a2d34; color: #a9b0bd; border-radius: 8px; cursor: pointer; }
+.note-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75em; margin-bottom: 1.5em; }
+.note-grid button { padding: 0.8em 0; font-size: 1em; border: 1px solid #30333a; background: #2a2d34; color: #a9b0bd; border-radius: 8px; cursor: pointer; }
+.quality-selector button.active, .note-grid button.active { background-color: #3b82f6; color: #e6e6e6; border-color: #3b82f6; font-weight: bold; }
+.modal-actions { display: flex; gap: 1em; }
+.modal-actions button { flex: 1; padding: 0.8em; font-size: 1em; border-radius: 8px; cursor: pointer; }
+#confirmKeyBtn { border: 1px solid #3b82f6; background: #3b82f6; color: #e6e6e6; }
+#cancelKeyBtn { border: 1px solid #30333a; background: #181b22; color: #a9b0bd; }
+
+#chordButtonsContainer { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75em; margin-bottom: 1em; }
+@media (min-width: 600px) { #chordButtonsContainer { grid-template-columns: repeat(3, 1fr); } }
+.chord-btn { padding: 1em; font-size: 1.2em; border: 1px solid #30333a; background:#181b22; color:#e6e6e6; border-radius:10px; cursor: pointer; }
+.chord-btn:disabled { opacity: 0.5; }
+.chord-btn.active-keypress { transform: scale(0.95); background: #2a2d34; transition: transform 0.05s ease-out; } /* Vizuálna odozva na stlačenie klávesu */
+
 </style>
 </head>
 <body>
 
-<label for="modeSelect">Mode:</label>
-<select id="modeSelect">
-  <option value="file" selected>File Mode (Load local MP4/audio)</option>
-  <option value="manual">Manual Tap Mode (No file)</option>
-</select>
-<span class="muted">Tip: Space = tap (desktop). First tap in File Mode starts video at 0.000.</span>
+<div class="controls-container">
+  <button id="selectKeyBtn">Zvoliť tóninu: C dur</button>
+  <label for="modeSelect">Mode:</label>
+  <select id="modeSelect">
+    <option value="file" selected>File Mode (Load local MP4/audio)</option>
+    <option value="manual">Manual Tap Mode (No file)</option>
+  </select>
+</div>
+
+<span class="muted">Tip: Použi klávesy 1-6 na rýchle zadanie akordov.</span>
 
 <div id="fileModeControls" style="display:none;">
   <label for="fileInput">Load local MP4 or audio file:</label>
   <input id="fileInput" type="file" accept="video/*,audio/*" />
-    <video id="videoPlayer" controls playsinline webkit-playsinline></video>
+  <video id="videoPlayer" controls playsinline webkit-playsinline></video>
 </div>
 
 <div id="manualControls" style="display:none;">
@@ -50,7 +77,7 @@ td.chord { cursor: text; }
 </div>
 
 <div id="timer">00:00.000</div>
-<button id="tapButton" disabled>Tap Chord</button>
+<div id="chordButtonsContainer"></div>
 
 <table id="logTable">
   <thead>
@@ -62,8 +89,37 @@ td.chord { cursor: text; }
 <button id="duplicateBtn" disabled>Duplicate Selected Progression</button>
 <button id="exportBtn" disabled>Export CSV</button>
 
+<div id="keyModal" class="modal-overlay">
+  <div class="modal-content">
+    <h3>Zvoľte tóninu</h3>
+    <div id="selectedKeyDisplay" class="selected-key-preview"></div>
+    <div class="quality-selector">
+        <button data-quality="M">DUR</button>
+        <button data-quality="m">mol</button>
+    </div>
+    <div class="note-grid">
+        <button data-note="C" data-display="C">C</button>
+        <button data-note="C#" data-display="C#">C# / Db</button>
+        <button data-note="D" data-display="D">D</button>
+        <button data-note="D#" data-display="Eb">D# / Eb</button>
+        <button data-note="E" data-display="E">E</button>
+        <button data-note="F" data-display="F">F</button>
+        <button data-note="F#" data-display="F#">F# / Gb</button>
+        <button data-note="G" data-display="G">G</button>
+        <button data-note="G#" data-display="Ab">G# / Ab</button>
+        <button data-note="A" data-display="A">A</button>
+        <button data-note="A#" data-display="Bb">A# / Bb</button>
+        <button data-note="B" data-display="B">B</button>
+    </div>
+    <div class="modal-actions">
+        <button id="cancelKeyBtn">Zrušiť</button>
+        <button id="confirmKeyBtn">Potvrdiť</button>
+    </div>
+  </div>
+</div>
+
 <script>
-// Elements
+// --- Elements ---
 const modeSelect = document.getElementById('modeSelect');
 const fileModeControls = document.getElementById('fileModeControls');
 const manualControls = document.getElementById('manualControls');
@@ -72,183 +128,234 @@ const videoPlayer = document.getElementById('videoPlayer');
 const timerEl = document.getElementById('timer');
 const startStopBtn = document.getElementById('startStopBtn');
 const resetBtn = document.getElementById('resetBtn');
-const tapButton = document.getElementById('tapButton');
+const chordButtonsContainer = document.getElementById('chordButtonsContainer');
 const exportBtn = document.getElementById('exportBtn');
 const duplicateBtn = document.getElementById('duplicateBtn');
 const logTableBody = document.querySelector('#logTable tbody');
+const selectKeyBtn = document.getElementById('selectKeyBtn');
+const keyModal = document.getElementById('keyModal');
+const selectedKeyDisplay = document.getElementById('selectedKeyDisplay');
+const qualitySelector = document.querySelector('.quality-selector');
+const noteGrid = document.querySelector('.note-grid');
+const confirmKeyBtn = document.getElementById('confirmKeyBtn');
+const cancelKeyBtn = document.getElementById('cancelKeyBtn');
 
-// State
-let taps = []; // {timeSec:number, chord:string}
+// --- State ---
+let taps = [];
 let running = false;
 let startTime = 0;
 let elapsed = 0;
 let timerInterval;
 let mode = modeSelect.value;
-let firstTapDone = false; // Flag to check if the initial tap has been made in file mode
-
-// Selection for duplication
+let firstTapDone = false;
 let sourceStart = null;
 let sourceEnd = null;
 let selectedRows = new Set();
+let currentKey = { note: 'C', display: 'C', quality: 'M' };
+let tempKey = { ...currentKey };
 
-// Timer formatting
-function formatTime(seconds){
-  const ms=Math.floor((seconds-Math.floor(seconds))*1000);
-  const total=Math.floor(seconds);
-  const minutes=Math.floor(total/60);
-  const secs=total%60;
-  return String(minutes).padStart(2,'0')+':'+String(secs).padStart(2,'0')+'.'+String(ms).padStart(3,'0');
-}
+// --- Music Theory Engine ---
+const chromaticScale = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const scalePatterns = { M: [0, 2, 4, 5, 7, 9, 11], m: [0, 2, 3, 5, 7, 8, 10] };
+const chordPatterns = { M: ['','m','m','','','m'], m: ['m','dim','','m','m','',''] };
 
-// Render table
-function renderTable(){
-  logTableBody.innerHTML='';
-  taps.forEach((tap,index)=>{
-    const tr=document.createElement('tr');
-    const tdIndex=document.createElement('td');
-    tdIndex.className='rowIdx';
-    tdIndex.textContent=index+1;
-    tr.appendChild(tdIndex);
+function generateDiatonicChords(key) {
+    const rootIndex = chromaticScale.indexOf(key.note);
+    const pattern = scalePatterns[key.quality];
+    const chords = [];
+    for (let i = 0; i < 6; i++) {
+        const noteIndex = (rootIndex + pattern[i]) % 12;
+        let noteName = chromaticScale[noteIndex];
+        const chordQuality = chordPatterns[key.quality][i];
+        
+        // Handle enharmonic equivalents based on user preference
+        const enharmonicMap = { 'C#':'Db', 'D#':'Eb', 'F#':'Gb', 'G#':'Ab', 'A#':'Bb' };
+        const preferredFlats = ['Eb', 'Ab', 'Bb'];
+        if (Object.values(enharmonicMap).includes(noteName) && !preferredFlats.includes(noteName)) {
+            noteName = Object.keys(enharmonicMap).find(k => enharmonicMap[k] === noteName);
+        } else if (Object.keys(enharmonicMap).includes(noteName) && preferredFlats.includes(enharmonicMap[noteName])) {
+             noteName = enharmonicMap[noteName];
+        }
 
-    const tdTime=document.createElement('td');
-    tdTime.className='timeCell';
-    tdTime.textContent=formatTime(tap.timeSec);
-    tr.appendChild(tdTime);
-
-    const tdChord=document.createElement('td');
-    tdChord.className='chord';
-    const cell=document.createElement('div');
-    cell.className='cell chordCell';
-    cell.contentEditable='true';
-    cell.spellcheck=false;
-    cell.dataset.row=index;
-    cell.textContent=tap.chord;
-    if(selectedRows.has(index)) cell.classList.add('selected');
-    tdChord.appendChild(cell);
-    tr.appendChild(tdChord);
-    logTableBody.appendChild(tr);
-  });
-  duplicateBtn.disabled=(sourceStart===null||sourceEnd===null);
-}
-
-// Add tap
-function addTap(){
-  let currentTime=0;
-  if(mode === 'file' && videoPlayer.src) {
-    if (!firstTapDone) {
-        videoPlayer.currentTime = 0;
-        videoPlayer.play();
-        firstTapDone = true;
-        currentTime = 0;
-    } else {
-        if(videoPlayer.paused) return;
-        currentTime = videoPlayer.currentTime;
+        chords.push(`${noteName}${chordQuality}`);
     }
-  } else if(mode === 'manual'){
-    if(!running) return;
-    currentTime=elapsed;
-  } else {
-    return;
-  }
-  const chordDefault='Chord '+(taps.length+1);
-  taps.push({timeSec:currentTime,chord:chordDefault});
-  renderTable();
-  exportBtn.disabled=false;
+    return chords;
 }
 
-// Timer
-function updateTimer(){
-  if(mode==='file' && videoPlayer.src) timerEl.textContent=formatTime(videoPlayer.currentTime);
-  else if(mode==='manual' && running){ elapsed=(Date.now()-startTime)/1000; timerEl.textContent=formatTime(elapsed); }
+// --- UI Rendering ---
+function renderChordButtons() {
+    chordButtonsContainer.innerHTML = '';
+    const chords = generateDiatonicChords(currentKey);
+    chords.forEach(chord => {
+        const btn = document.createElement('button');
+        btn.className = 'chord-btn';
+        btn.textContent = chord;
+        btn.dataset.chord = chord;
+        chordButtonsContainer.appendChild(btn);
+    });
+    toggleChordButtons(mode === 'manual' ? running : !videoPlayer.paused && videoPlayer.src);
 }
-function startTimer(){ if(running)return; startTime=Date.now()-(elapsed*1000); timerInterval=setInterval(updateTimer,50); running=true; startStopBtn.textContent='Pause'; tapButton.disabled=false; }
-function stopTimer(){ if(!running)return; clearInterval(timerInterval); running=false; startStopBtn.textContent='Start'; tapButton.disabled=true; }
-function resetTimer(){ stopTimer(); elapsed=0; timerEl.textContent='00:00.000'; taps=[]; firstTapDone=false; sourceStart=null; sourceEnd=null; selectedRows.clear(); renderTable(); exportBtn.disabled=true; duplicateBtn.disabled=true; }
 
-// Event listeners
-startStopBtn.addEventListener('click',()=>{ running?stopTimer():startTimer(); });
-resetBtn.addEventListener('click',resetTimer);
-tapButton.addEventListener('click',addTap);
-exportBtn.addEventListener('click',()=>{
-  let csv='Time (HH:MM:SS.ms),Chord\n';
-  taps.forEach(tap=>csv+=`${formatTime(tap.timeSec)},${tap.chord}\n`);
-  const blob=new Blob([csv],{type:'text/csv'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a'); a.href=url; a.download='chord_timestamps.csv';
-  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+function toggleChordButtons(enabled) {
+    chordButtonsContainer.querySelectorAll('.chord-btn').forEach(btn => btn.disabled = !enabled);
+}
+
+function renderTable() {
+    logTableBody.innerHTML='';
+    taps.forEach((tap,index)=>{
+        const tr=document.createElement('tr');
+        const tdIndex=document.createElement('td'); tdIndex.className='rowIdx'; tdIndex.textContent=index+1; tr.appendChild(tdIndex);
+        const tdTime=document.createElement('td'); tdTime.className='timeCell'; tdTime.textContent=formatTime(tap.timeSec); tr.appendChild(tdTime);
+        const tdChord=document.createElement('td'); tdChord.className='chord';
+        const cell=document.createElement('div'); cell.className='cell chordCell'; cell.contentEditable='true'; cell.spellcheck=false; cell.dataset.row=index; cell.textContent=tap.chord;
+        if(selectedRows.has(index)) cell.classList.add('selected');
+        tdChord.appendChild(cell); tr.appendChild(tdChord); logTableBody.appendChild(tr);
+    });
+    duplicateBtn.disabled=(sourceStart===null||sourceEnd===null);
+}
+
+// --- Core Functionality ---
+function addTap(chordName) {
+    let currentTime = 0;
+    if (mode === 'file' && videoPlayer.src) {
+        if (!firstTapDone && videoPlayer.paused) {
+            videoPlayer.currentTime = 0;
+            videoPlayer.play();
+            firstTapDone = true;
+            currentTime = 0;
+        } else {
+            if (videoPlayer.paused) return;
+            currentTime = videoPlayer.currentTime;
+        }
+    } else if (mode === 'manual') {
+        if (!running) return;
+        currentTime = elapsed;
+    } else {
+        return;
+    }
+    taps.push({ timeSec: currentTime, chord: chordName });
+    taps.sort((a, b) => a.timeSec - b.timeSec);
+    renderTable();
+    exportBtn.disabled = false;
+}
+
+// --- Timers and Controls ---
+function updateTimer() {
+    if (mode === 'file' && videoPlayer.src) timerEl.textContent = formatTime(videoPlayer.currentTime);
+    else if (mode === 'manual' && running) { elapsed = (Date.now() - startTime) / 1000; timerEl.textContent = formatTime(elapsed); }
+}
+function startTimer() { if(running)return; startTime=Date.now()-(elapsed*1000); running=true; startStopBtn.textContent='Pause'; toggleChordButtons(true); }
+function stopTimer() { if(!running)return; running=false; startStopBtn.textContent='Start'; toggleChordButtons(false); }
+function resetTimer() { stopTimer(); elapsed=0; timerEl.textContent='00:00.000'; taps=[]; firstTapDone=false; sourceStart=null; sourceEnd=null; selectedRows.clear(); renderTable(); exportBtn.disabled=true; duplicateBtn.disabled=true; }
+
+// --- Event Listeners ---
+startStopBtn.addEventListener('click', () => { running ? stopTimer() : startTimer(); });
+resetBtn.addEventListener('click', resetTimer);
+chordButtonsContainer.addEventListener('click', (e) => {
+    if (e.target.classList.contains('chord-btn')) {
+        addTap(e.target.dataset.chord);
+    }
+});
+modeSelect.addEventListener('change', () => {
+    mode = modeSelect.value;
+    if (mode === 'file') { fileModeControls.style.display = 'block'; manualControls.style.display = 'none'; toggleChordButtons(false); resetTimer(); }
+    else { fileModeControls.style.display = 'none'; manualControls.style.display = 'block'; toggleChordButtons(false); resetTimer(); }
+});
+fileInput.addEventListener('change', e => {
+    const file = e.target.files[0]; if (!file) return;
+    const fileURL = URL.createObjectURL(file); videoPlayer.src = fileURL;
+    taps = []; renderTable(); exportBtn.disabled = true; timerEl.textContent = '00:00.000'; firstTapDone = false; toggleChordButtons(true);
+});
+videoPlayer.addEventListener('play', () => { if (!firstTapDone) firstTapDone = true; toggleChordButtons(true); });
+videoPlayer.addEventListener('pause', () => { toggleChordButtons(false); });
+exportBtn.addEventListener('click', () => {
+    let csv = 'Time (HH:MM:SS.ms),Chord\n';
+    taps.forEach(tap => csv += `${formatTime(tap.timeSec)},${tap.chord.replace(/,/g, ';')}\n`);
+    const blob = new Blob([csv], { type: 'text/csv' }); const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'chord_timestamps.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+});
+logTableBody.addEventListener('click', e => {
+    const row = e.target.closest('div.chordCell'); if (!row) return;
+    const idx = parseInt(row.dataset.row);
+    if (sourceStart === null) { sourceStart = idx; selectedRows.add(idx); }
+    else if (sourceEnd === null) { sourceEnd = idx; for (let i = Math.min(sourceStart, idx); i <= Math.max(sourceStart, idx); i++) selectedRows.add(i); }
+    else {
+        const sourceChord = taps.slice(Math.min(sourceStart, sourceEnd), Math.max(sourceStart, sourceEnd) + 1).map(t => t.chord);
+        let targetIdx = idx;
+        for (let i = 0; i < sourceChord.length; i++) {
+            if (targetIdx + i >= taps.length) taps.push({ timeSec: 0, chord: sourceChord[i] });
+            else taps[targetIdx + i].chord = sourceChord[i];
+        }
+        sourceStart = null; sourceEnd = null; selectedRows.clear(); renderTable();
+    }
+    renderTable();
+});
+duplicateBtn.addEventListener('click', () => {
+    if (sourceStart === null || sourceEnd === null) return;
+    const sourceChord = taps.slice(Math.min(sourceStart, sourceEnd), Math.max(sourceStart, sourceEnd) + 1).map(t => t.chord);
+    let targetIdx = Math.max(sourceStart, sourceEnd) + 1;
+    for (let i = 0; i < sourceChord.length; i++) {
+        if (targetIdx + i >= taps.length) taps.push({ timeSec: 0, chord: sourceChord[i] });
+        else taps[targetIdx + i].chord = sourceChord[i];
+    }
+    sourceStart = null; sourceEnd = null; selectedRows.clear(); renderTable();
 });
 
-// Mode switch
-modeSelect.addEventListener('change',()=>{
-  mode=modeSelect.value;
-  if(mode==='file'){ fileModeControls.style.display='block'; manualControls.style.display='none'; tapButton.disabled=true; resetTimer();}
-  else{ fileModeControls.style.display='none'; manualControls.style.display='block'; tapButton.disabled=true; resetTimer();}
+// --- Key Modal Listeners ---
+const formatKeyName = (key) => `${key.display} ${key.quality === 'm' ? 'mol' : 'dur'}`;
+const updateModalUI = () => {
+    selectedKeyDisplay.textContent = `Tónina: ${formatKeyName(tempKey)}`;
+    qualitySelector.querySelectorAll('button').forEach(btn => btn.classList.toggle('active', btn.dataset.quality === tempKey.quality));
+    noteGrid.querySelectorAll('button').forEach(btn => btn.classList.toggle('active', btn.dataset.note === tempKey.note));
+};
+const openModal = () => { tempKey = { ...currentKey }; updateModalUI(); keyModal.style.display = 'flex'; };
+const closeModal = () => { keyModal.style.display = 'none'; };
+selectKeyBtn.addEventListener('click', openModal);
+cancelKeyBtn.addEventListener('click', closeModal);
+keyModal.addEventListener('click', (e) => { if (e.target === keyModal) closeModal(); });
+confirmKeyBtn.addEventListener('click', () => {
+    currentKey = { ...tempKey };
+    selectKeyBtn.textContent = `Zvoliť tóninu: ${formatKeyName(currentKey)}`;
+    renderChordButtons();
+    closeModal();
+});
+qualitySelector.addEventListener('click', (e) => { if (e.target.tagName === 'BUTTON') { tempKey.quality = e.target.dataset.quality; updateModalUI(); } });
+noteGrid.addEventListener('click', (e) => { if (e.target.tagName === 'BUTTON') { tempKey.note = e.target.dataset.note; tempKey.display = e.target.dataset.display; updateModalUI(); } });
+
+// --- Keyboard Shortcuts Listener ---
+window.addEventListener('keydown', e => {
+    if (e.target.isContentEditable) return; // Ignoruj, ak užívateľ píše v tabuľke
+    
+    const keyMap = {
+        'Digit1': 0, 'Numpad1': 0,
+        'Digit2': 1, 'Numpad2': 1,
+        'Digit3': 2, 'Numpad3': 2,
+        'Digit4': 3, 'Numpad4': 3,
+        'Digit5': 4, 'Numpad5': 4,
+        'Digit6': 5, 'Numpad6': 5,
+    };
+    const buttonIndex = keyMap[e.code];
+    if (buttonIndex !== undefined && !e.repeat) {
+        e.preventDefault();
+        const targetButton = chordButtonsContainer.querySelectorAll('.chord-btn')[buttonIndex];
+        if (targetButton && !targetButton.disabled) {
+            addTap(targetButton.dataset.chord);
+            // Vizuálna odozva
+            targetButton.classList.add('active-keypress');
+            setTimeout(() => targetButton.classList.remove('active-keypress'), 100);
+        }
+    }
 });
 
-// File input
-fileInput.addEventListener('change',e=>{
-  const file=e.target.files[0]; if(!file)return;
-  const fileURL=URL.createObjectURL(file);
-  videoPlayer.src=fileURL;
-  taps=[];
-  renderTable();
-  exportBtn.disabled=true;
-  timerEl.textContent='00:00.000';
-  firstTapDone=false;
-  tapButton.disabled=false;
-});
-
-// Video play/pause
-videoPlayer.addEventListener('play',()=>{
-    if(!firstTapDone) firstTapDone = true;
-    tapButton.disabled=false;
-});
-videoPlayer.addEventListener('pause',()=>{ tapButton.disabled=true; });
-
-// Spacebar support
-window.addEventListener('keydown',e=>{
-  if(e.code==='Space' && !e.repeat){
-    e.preventDefault();
-    if(!tapButton.disabled){
-        addTap();
-    }
-  }
-});
-
-// Select chord cells for duplication
-logTableBody.addEventListener('click',e=>{
-  const row= e.target.closest('div.chordCell');
-  if(!row) return;
-  const idx=parseInt(row.dataset.row);
-  if(sourceStart===null){ sourceStart=idx; selectedRows.add(idx); }
-  else if(sourceEnd===null){ sourceEnd=idx; for(let i=Math.min(sourceStart,idx);i<=Math.max(sourceStart,idx);i++) selectedRows.add(i); }
-  else{ // tap target
-    const sourceChord=taps.slice(Math.min(sourceStart,sourceEnd),Math.max(sourceStart,sourceEnd)+1).map(t=>t.chord);
-    let targetIdx=idx;
-    for(let i=0;i<sourceChord.length;i++){
-      if(targetIdx+i>=taps.length) taps.push({timeSec:0,chord:sourceChord[i]});
-      else taps[targetIdx+i].chord=sourceChord[i];
-    }
-    sourceStart=null; sourceEnd=null; selectedRows.clear(); renderTable();
-  }
-  renderTable();
-});
-
-// Duplicate button fallback (optional)
-duplicateBtn.addEventListener('click',()=>{
-  if(sourceStart===null||sourceEnd===null) return;
-  const sourceChord=taps.slice(Math.min(sourceStart,sourceEnd),Math.max(sourceStart,sourceEnd)+1).map(t=>t.chord);
-  let targetIdx=Math.max(sourceStart,sourceEnd)+1;
-  for(let i=0;i<sourceChord.length;i++){
-    if(targetIdx+i>=taps.length) taps.push({timeSec:0,chord:sourceChord[i]});
-    else taps[targetIdx+i].chord=sourceChord[i];
-  }
-  sourceStart=null; sourceEnd=null; selectedRows.clear(); renderTable();
-});
-
-// Initialize
-modeSelect.dispatchEvent(new Event('change'));
-setInterval(updateTimer, 50);
+// --- Initialization ---
+const initialize = () => {
+    modeSelect.dispatchEvent(new Event('change'));
+    if (!timerInterval) timerInterval = setInterval(updateTimer, 50);
+    selectKeyBtn.textContent = `Zvoliť tóninu: ${formatKeyName(currentKey)}`;
+    renderChordButtons();
+};
+initialize();
 </script>
 
 </body>
