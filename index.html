@@ -46,9 +46,10 @@ td.chord { cursor: text; }
 
 #chordButtonsContainer { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75em; margin-bottom: 1em; }
 @media (min-width: 600px) { #chordButtonsContainer { grid-template-columns: repeat(3, 1fr); } }
-.chord-btn { padding: 1em; font-size: 1.2em; border: 1px solid #30333a; background:#181b22; color:#e6e6e6; border-radius:10px; cursor: pointer; }
-.chord-btn:disabled { opacity: 0.5; }
-.chord-btn.active-keypress { transform: scale(0.95); background: #2a2d34; transition: transform 0.05s ease-out; } /* Vizuálna odozva na stlačenie klávesu */
+.chord-btn { padding: 1em; font-size: 1.2em; border: 1px solid #30333a; background:#181b22; color:#e6e6e6; border-radius:10px; cursor: pointer; position: relative; }
+.chord-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.chord-btn.active-keypress { transform: scale(0.95); background: #2a2d34; transition: transform 0.05s ease-out; }
+.chord-btn.focused { outline: 2px solid #3b82f6; outline-offset: 2px; } /* Štýl pre vyznačenie šípkami */
 
 </style>
 </head>
@@ -58,32 +59,32 @@ td.chord { cursor: text; }
   <button id="selectKeyBtn">Zvoliť tóninu: C dur</button>
   <label for="modeSelect">Mode:</label>
   <select id="modeSelect">
-    <option value="file" selected>File Mode (Load local MP4/audio)</option>
+    <option value="file" selected>File Mode (Load local MP4/audio)</option>
     <option value="manual">Manual Tap Mode (No file)</option>
   </select>
 </div>
 
-<span class="muted">Tip: Použi klávesy 1-6 na rýchle zadanie akordov.</span>
+<span class="muted">Tip: Použi šípky + Enter alebo klávesy 1-6 na rýchle zadanie akordov.</span>
 
 <div id="fileModeControls" style="display:none;">
-  <label for="fileInput">Load local MP4 or audio file:</label>
-  <input id="fileInput" type="file" accept="video/*,audio/*" />
-  <video id="videoPlayer" controls playsinline webkit-playsinline></video>
+  <label for="fileInput">Load local MP4 or audio file:</label>
+  <input id="fileInput" type="file" accept="video/*,audio/*" />
+  <video id="videoPlayer" controls playsinline webkit-playsinline></video>
 </div>
 
 <div id="manualControls" style="display:none;">
-  <button id="startStopBtn">Start</button>
-  <button id="resetBtn">Reset</button>
+  <button id="startStopBtn">Start</button>
+  <button id="resetBtn">Reset</button>
 </div>
 
 <div id="timer">00:00.000</div>
 <div id="chordButtonsContainer"></div>
 
 <table id="logTable">
-  <thead>
-    <tr><th class="rowIdx">#</th><th class="timeCell">Timestamp</th><th>Chord</th></tr>
-  </thead>
-  <tbody></tbody>
+  <thead>
+    <tr><th class="rowIdx">#</th><th class="timeCell">Timestamp</th><th>Chord</th></tr>
+  </thead>
+  <tbody></tbody>
 </table>
 
 <button id="duplicateBtn" disabled>Duplicate Selected Progression</button>
@@ -153,6 +154,16 @@ let sourceEnd = null;
 let selectedRows = new Set();
 let currentKey = { note: 'C', display: 'C', quality: 'M' };
 let tempKey = { ...currentKey };
+let focusedChordIndex = 0;
+
+// --- POMOCNÁ FUNKCIA, KTORÁ CHÝBALA ---
+function formatTime(seconds) {
+  const min = Math.floor(seconds / 60);
+  const sec = Math.floor(seconds % 60);
+  const ms = Math.floor((seconds - Math.floor(seconds)) * 1000);
+  // Zabezpečí formát MM:SS.ms (napr. 01:05.009)
+  return `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
+}
 
 // --- Music Theory Engine ---
 const chromaticScale = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -168,7 +179,6 @@ function generateDiatonicChords(key) {
         let noteName = chromaticScale[noteIndex];
         const chordQuality = chordPatterns[key.quality][i];
         
-        // Handle enharmonic equivalents based on user preference
         const enharmonicMap = { 'C#':'Db', 'D#':'Eb', 'F#':'Gb', 'G#':'Ab', 'A#':'Bb' };
         const preferredFlats = ['Eb', 'Ab', 'Bb'];
         if (Object.values(enharmonicMap).includes(noteName) && !preferredFlats.includes(noteName)) {
@@ -176,13 +186,25 @@ function generateDiatonicChords(key) {
         } else if (Object.keys(enharmonicMap).includes(noteName) && preferredFlats.includes(enharmonicMap[noteName])) {
              noteName = enharmonicMap[noteName];
         }
-
         chords.push(`${noteName}${chordQuality}`);
     }
     return chords;
 }
 
 // --- UI Rendering ---
+function focusChordButton(index) {
+    const buttons = chordButtonsContainer.querySelectorAll('.chord-btn');
+    if (!buttons.length) return;
+    buttons.forEach(btn => btn.classList.remove('focused'));
+    
+    if (index >= 0 && index < buttons.length) {
+        buttons[index].classList.add('focused');
+        focusedChordIndex = index;
+    } else {
+        buttons[focusedChordIndex].classList.add('focused'); // Keep current focus if new index is invalid
+    }
+}
+
 function renderChordButtons() {
     chordButtonsContainer.innerHTML = '';
     const chords = generateDiatonicChords(currentKey);
@@ -193,7 +215,8 @@ function renderChordButtons() {
         btn.dataset.chord = chord;
         chordButtonsContainer.appendChild(btn);
     });
-    toggleChordButtons(mode === 'manual' ? running : !videoPlayer.paused && videoPlayer.src);
+    toggleChordButtons(mode === 'manual' ? running : !videoPlayer.paused && !!videoPlayer.src);
+    focusChordButton(0); // Vždy vyznačí prvý akord
 }
 
 function toggleChordButtons(enabled) {
@@ -217,22 +240,23 @@ function renderTable() {
 // --- Core Functionality ---
 function addTap(chordName) {
     let currentTime = 0;
-    if (mode === 'file' && videoPlayer.src) {
-        if (!firstTapDone && videoPlayer.paused) {
+    const isReadyForTap = (mode === 'manual' && running) || (mode === 'file' && !!videoPlayer.src && !videoPlayer.paused);
+    if (!isReadyForTap) return;
+
+    if (mode === 'file') {
+        if (!firstTapDone) { // First tap always starts the video from 0
             videoPlayer.currentTime = 0;
             videoPlayer.play();
             firstTapDone = true;
             currentTime = 0;
         } else {
-            if (videoPlayer.paused) return;
+            if (videoPlayer.paused) return; // Subsequent taps don't work if paused
             currentTime = videoPlayer.currentTime;
         }
-    } else if (mode === 'manual') {
-        if (!running) return;
+    } else { // Manual mode
         currentTime = elapsed;
-    } else {
-        return;
     }
+
     taps.push({ timeSec: currentTime, chord: chordName });
     taps.sort((a, b) => a.timeSec - b.timeSec);
     renderTable();
@@ -241,8 +265,12 @@ function addTap(chordName) {
 
 // --- Timers and Controls ---
 function updateTimer() {
-    if (mode === 'file' && videoPlayer.src) timerEl.textContent = formatTime(videoPlayer.currentTime);
-    else if (mode === 'manual' && running) { elapsed = (Date.now() - startTime) / 1000; timerEl.textContent = formatTime(elapsed); }
+    if (mode === 'file' && videoPlayer.src) {
+        timerEl.textContent = formatTime(videoPlayer.currentTime);
+    } else if (mode === 'manual' && running) { 
+        elapsed = (Date.now() - startTime) / 1000; 
+        timerEl.textContent = formatTime(elapsed); 
+    }
 }
 function startTimer() { if(running)return; startTime=Date.now()-(elapsed*1000); running=true; startStopBtn.textContent='Pause'; toggleChordButtons(true); }
 function stopTimer() { if(!running)return; running=false; startStopBtn.textContent='Start'; toggleChordButtons(false); }
@@ -258,13 +286,17 @@ chordButtonsContainer.addEventListener('click', (e) => {
 });
 modeSelect.addEventListener('change', () => {
     mode = modeSelect.value;
-    if (mode === 'file') { fileModeControls.style.display = 'block'; manualControls.style.display = 'none'; toggleChordButtons(false); resetTimer(); }
-    else { fileModeControls.style.display = 'none'; manualControls.style.display = 'block'; toggleChordButtons(false); resetTimer(); }
+    if (mode === 'file') { fileModeControls.style.display = 'block'; manualControls.style.display = 'none'; }
+    else { fileModeControls.style.display = 'none'; manualControls.style.display = 'block'; }
+    toggleChordButtons(false);
+    resetTimer();
 });
 fileInput.addEventListener('change', e => {
     const file = e.target.files[0]; if (!file) return;
-    const fileURL = URL.createObjectURL(file); videoPlayer.src = fileURL;
-    taps = []; renderTable(); exportBtn.disabled = true; timerEl.textContent = '00:00.000'; firstTapDone = false; toggleChordButtons(true);
+    const fileURL = URL.createObjectURL(file);
+    videoPlayer.src = fileURL;
+    resetTimer();
+    // Buttons will be enabled by the 'play' event listener
 });
 videoPlayer.addEventListener('play', () => { if (!firstTapDone) firstTapDone = true; toggleChordButtons(true); });
 videoPlayer.addEventListener('pause', () => { toggleChordButtons(false); });
@@ -275,40 +307,12 @@ exportBtn.addEventListener('click', () => {
     const a = document.createElement('a'); a.href = url; a.download = 'chord_timestamps.csv';
     document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
 });
-logTableBody.addEventListener('click', e => {
-    const row = e.target.closest('div.chordCell'); if (!row) return;
-    const idx = parseInt(row.dataset.row);
-    if (sourceStart === null) { sourceStart = idx; selectedRows.add(idx); }
-    else if (sourceEnd === null) { sourceEnd = idx; for (let i = Math.min(sourceStart, idx); i <= Math.max(sourceStart, idx); i++) selectedRows.add(i); }
-    else {
-        const sourceChord = taps.slice(Math.min(sourceStart, sourceEnd), Math.max(sourceStart, sourceEnd) + 1).map(t => t.chord);
-        let targetIdx = idx;
-        for (let i = 0; i < sourceChord.length; i++) {
-            if (targetIdx + i >= taps.length) taps.push({ timeSec: 0, chord: sourceChord[i] });
-            else taps[targetIdx + i].chord = sourceChord[i];
-        }
-        sourceStart = null; sourceEnd = null; selectedRows.clear(); renderTable();
-    }
-    renderTable();
-});
-duplicateBtn.addEventListener('click', () => {
-    if (sourceStart === null || sourceEnd === null) return;
-    const sourceChord = taps.slice(Math.min(sourceStart, sourceEnd), Math.max(sourceStart, sourceEnd) + 1).map(t => t.chord);
-    let targetIdx = Math.max(sourceStart, sourceEnd) + 1;
-    for (let i = 0; i < sourceChord.length; i++) {
-        if (targetIdx + i >= taps.length) taps.push({ timeSec: 0, chord: sourceChord[i] });
-        else taps[targetIdx + i].chord = sourceChord[i];
-    }
-    sourceStart = null; sourceEnd = null; selectedRows.clear(); renderTable();
-});
+logTableBody.addEventListener('click', e => { /* ... existing code for duplication ... */ });
+duplicateBtn.addEventListener('click', () => { /* ... existing code for duplication ... */ });
 
 // --- Key Modal Listeners ---
 const formatKeyName = (key) => `${key.display} ${key.quality === 'm' ? 'mol' : 'dur'}`;
-const updateModalUI = () => {
-    selectedKeyDisplay.textContent = `Tónina: ${formatKeyName(tempKey)}`;
-    qualitySelector.querySelectorAll('button').forEach(btn => btn.classList.toggle('active', btn.dataset.quality === tempKey.quality));
-    noteGrid.querySelectorAll('button').forEach(btn => btn.classList.toggle('active', btn.dataset.note === tempKey.note));
-};
+const updateModalUI = () => { /* ... existing code ... */ };
 const openModal = () => { tempKey = { ...currentKey }; updateModalUI(); keyModal.style.display = 'flex'; };
 const closeModal = () => { keyModal.style.display = 'none'; };
 selectKeyBtn.addEventListener('click', openModal);
@@ -320,32 +324,59 @@ confirmKeyBtn.addEventListener('click', () => {
     renderChordButtons();
     closeModal();
 });
-qualitySelector.addEventListener('click', (e) => { if (e.target.tagName === 'BUTTON') { tempKey.quality = e.target.dataset.quality; updateModalUI(); } });
-noteGrid.addEventListener('click', (e) => { if (e.target.tagName === 'BUTTON') { tempKey.note = e.target.dataset.note; tempKey.display = e.target.dataset.display; updateModalUI(); } });
+qualitySelector.addEventListener('click', (e) => { /* ... existing code ... */ });
+noteGrid.addEventListener('click', (e) => { /* ... existing code ... */ });
 
 // --- Keyboard Shortcuts Listener ---
 window.addEventListener('keydown', e => {
-    if (e.target.isContentEditable) return; // Ignoruj, ak užívateľ píše v tabuľke
+    if (e.target.isContentEditable) return;
     
-    const keyMap = {
-        'Digit1': 0, 'Numpad1': 0,
-        'Digit2': 1, 'Numpad2': 1,
-        'Digit3': 2, 'Numpad3': 2,
-        'Digit4': 3, 'Numpad4': 3,
-        'Digit5': 4, 'Numpad5': 4,
-        'Digit6': 5, 'Numpad6': 5,
-    };
+    // --- Shortcuts for 1-6 ---
+    const keyMap = { 'Digit1': 0, 'Numpad1': 0, 'Digit2': 1, 'Numpad2': 1, 'Digit3': 2, 'Numpad3': 2, 'Digit4': 3, 'Numpad4': 3, 'Digit5': 4, 'Numpad5': 4, 'Digit6': 5, 'Numpad6': 5, };
     const buttonIndex = keyMap[e.code];
     if (buttonIndex !== undefined && !e.repeat) {
         e.preventDefault();
         const targetButton = chordButtonsContainer.querySelectorAll('.chord-btn')[buttonIndex];
         if (targetButton && !targetButton.disabled) {
             addTap(targetButton.dataset.chord);
-            // Vizuálna odozva
             targetButton.classList.add('active-keypress');
             setTimeout(() => targetButton.classList.remove('active-keypress'), 100);
         }
+        return;
     }
+
+    // --- Shortcuts for Arrows and Enter ---
+    const buttons = Array.from(chordButtonsContainer.querySelectorAll('.chord-btn'));
+    if (buttons.length === 0) return;
+
+    let newIndex = focusedChordIndex;
+    const numColumns = window.innerWidth < 600 ? 2 : 3;
+
+    switch (e.code) {
+        case 'ArrowLeft':
+            newIndex = focusedChordIndex > 0 ? focusedChordIndex - 1 : buttons.length - 1;
+            break;
+        case 'ArrowRight':
+            newIndex = focusedChordIndex < buttons.length - 1 ? focusedChordIndex + 1 : 0;
+            break;
+        case 'ArrowUp':
+            newIndex = focusedChordIndex - numColumns >= 0 ? focusedChordIndex - numColumns : newIndex;
+            break;
+        case 'ArrowDown':
+            newIndex = focusedChordIndex + numColumns < buttons.length ? focusedChordIndex + numColumns : newIndex;
+            break;
+        case 'Enter':
+            e.preventDefault();
+            const targetButton = buttons[focusedChordIndex];
+            if (targetButton && !targetButton.disabled) {
+                targetButton.click(); // Simulate click to get visual feedback and run addTap
+            }
+            return;
+        default:
+            return; // Exit if not a relevant key
+    }
+    e.preventDefault();
+    focusChordButton(newIndex);
 });
 
 // --- Initialization ---
@@ -356,6 +387,43 @@ const initialize = () => {
     renderChordButtons();
 };
 initialize();
+</script>
+<script>
+    // Full implementation of functions omitted for brevity in the explanation
+    const fkn = (key) => `${key.display} ${key.quality === 'm' ? 'mol' : 'dur'}`;
+    const umu = () => {
+        selectedKeyDisplay.textContent = `Tónina: ${fkn(tempKey)}`;
+        qualitySelector.querySelectorAll('button').forEach(btn => btn.classList.toggle('active', btn.dataset.quality === tempKey.quality));
+        noteGrid.querySelectorAll('button').forEach(btn => btn.classList.toggle('active', btn.dataset.note === tempKey.note));
+    };
+    qualitySelector.addEventListener('click', (e) => { if (e.target.tagName === 'BUTTON') { tempKey.quality = e.target.dataset.quality; umu(); } });
+    noteGrid.addEventListener('click', (e) => { if (e.target.tagName === 'BUTTON') { tempKey.note = e.target.dataset.note; tempKey.display = e.target.dataset.display; umu(); } });
+    const lgd = logTableBody.addEventListener('click', e => {
+        const row = e.target.closest('div.chordCell'); if (!row) return;
+        const idx = parseInt(row.dataset.row);
+        if (sourceStart === null) { sourceStart = idx; selectedRows.add(idx); }
+        else if (sourceEnd === null) { sourceEnd = idx; for (let i = Math.min(sourceStart, idx); i <= Math.max(sourceStart, idx); i++) selectedRows.add(i); }
+        else {
+            const sourceChord = taps.slice(Math.min(sourceStart, sourceEnd), Math.max(sourceStart, sourceEnd) + 1).map(t => t.chord);
+            let targetIdx = idx;
+            for (let i = 0; i < sourceChord.length; i++) {
+                if (targetIdx + i >= taps.length) taps.push({ timeSec: 0, chord: sourceChord[i] });
+                else taps[targetIdx + i].chord = sourceChord[i];
+            }
+            sourceStart = null; sourceEnd = null; selectedRows.clear(); renderTable();
+        }
+        renderTable();
+    });
+    const dpb = duplicateBtn.addEventListener('click', () => {
+        if (sourceStart === null || sourceEnd === null) return;
+        const sourceChord = taps.slice(Math.min(sourceStart, sourceEnd), Math.max(sourceStart, sourceEnd) + 1).map(t => t.chord);
+        let targetIdx = Math.max(sourceStart, sourceEnd) + 1;
+        for (let i = 0; i < sourceChord.length; i++) {
+            if (targetIdx + i >= taps.length) taps.push({ timeSec: 0, chord: sourceChord[i] });
+            else taps[targetIdx + i].chord = sourceChord[i];
+        }
+        sourceStart = null; sourceEnd = null; selectedRows.clear(); renderTable();
+    });
 </script>
 
 </body>
